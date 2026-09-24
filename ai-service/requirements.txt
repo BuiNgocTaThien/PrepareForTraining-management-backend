@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+minio
+python-dotenv
+langchain
+langchain-google-genai
+langchain-community
+langchain-chroma
+pypdf
+chromadb
+# OpenAI Whisper for speech-to-text (Note: requires ffmpeg installed on OS)
+# pip install openai-whisper
+openai-whisper
