@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: preparefortraining-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: prepare_for_training
+    ports:
+      - "5434:5432"
+    volumes:
+      - preparefortraining_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio
+    container_name: preparefortraining-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - preparefortraining_minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  preparefortraining_postgres_data:
+  preparefortraining_minio_data:

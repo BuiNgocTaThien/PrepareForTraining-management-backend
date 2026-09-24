@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/prepare_for_training
+    username: postgres
+    password: your-password
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+app:
+  bootstrap-admin:
+    # Set these only for the first local run; do not commit real credentials.
+    email: admin@example.com
+    password: ChangeThisAdminPassword123!
+    full-name: System Administrator

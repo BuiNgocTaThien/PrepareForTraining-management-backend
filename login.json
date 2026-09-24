@@ -1,0 +1,1 @@
+{"success":true,"message":"Success","data":{"accessToken":"eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZG1pbkBleGFtcGxlLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc5MDIxMjY0MSwiZXhwIjoxNzkwMjk5MDQxfQ.Xp-iELAGBP9KPLksBERc2VyCQpylas3XPmU79CwRkiVNd3j7F9TcNYwyRNVJwsz5","tokenType":"Bearer","user":{"id":1,"email":"admin@example.com","fullName":"System Administrator","role":"ADMIN","status":"ACTIVE"}}}

@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/prepare_for_training
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+server:
+  port: 8081
+app:
+  bootstrap-admin:
+    email: admin@example.com
+    password: "123456"
+    full-name: System Administrator
+logging:
+  level:
+    org.springframework.security: DEBUG

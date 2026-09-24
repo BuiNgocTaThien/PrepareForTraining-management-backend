@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: preparefortraining-management
+  profiles:
+    default: local
+server:
+  port: 8080
+app:
+  jwt:
+    # Override through JWT_SECRET. It must be at least 32 characters in production.
+    secret: ${JWT_SECRET:development-only-secret-key-change-before-production-12345}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    full-name: ${BOOTSTRAP_ADMIN_FULL_NAME:Administrator}
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

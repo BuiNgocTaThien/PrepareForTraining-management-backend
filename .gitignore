@@ -1,0 +1,9 @@
+target/
+.idea/
+*.iml
+application-local.yml
+src/main/resources/application-local.yml
+.env
+
+chroma_db/
+__pycache__/
