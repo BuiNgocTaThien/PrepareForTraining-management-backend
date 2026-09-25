@@ -25,9 +25,29 @@ public class AuthController {
         .body(ApiResponse.success(auth.register(request)));
   }
 
+  @PostMapping("/google")
+  @Operation(summary = "Log in or register with Google")
+  public ApiResponse<AuthResponse> googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
+    return ApiResponse.success(auth.googleLogin(request));
+  }
+
   @PostMapping("/login")
   @Operation(summary = "Log in and receive a JWT")
   public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
     return ApiResponse.success(auth.login(request));
+  }
+
+  @PostMapping("/forgot-password")
+  @Operation(summary = "Request a password reset link")
+  public ApiResponse<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+    auth.forgotPassword(request.email());
+    return ApiResponse.success("If this email is registered, a password reset link has been sent.");
+  }
+
+  @PostMapping("/reset-password")
+  @Operation(summary = "Reset password using a valid token")
+  public ApiResponse<String> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+    auth.resetPassword(request.token(), request.newPassword());
+    return ApiResponse.success("Password has been successfully reset.");
   }
 }
