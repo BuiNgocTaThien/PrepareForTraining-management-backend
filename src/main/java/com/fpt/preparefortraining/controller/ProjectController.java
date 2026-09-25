@@ -31,6 +31,12 @@ public class ProjectController {
     return ApiResponse.success(projects.list(auth.getName(), PageRequest.of(page, size), filter));
   }
 
+  @GetMapping("/stats")
+  @Operation(summary = "Get dashboard stats for current user")
+  public ApiResponse<DashboardStatsResponse> stats(Authentication auth) {
+    return ApiResponse.success(projects.getStats(auth.getName()));
+  }
+
   @PostMapping
   @Operation(summary = "Create a project (Owner or Admin)")
   public ResponseEntity<ApiResponse<ProjectResponse>> create(

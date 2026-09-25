@@ -35,6 +35,10 @@ public class ProjectService {
     
     if ("starred".equalsIgnoreCase(filter)) {
         result = projects.findStarredByUserIdAndStatus(actor.getId(), status, pageable);
+    } else if ("owned".equalsIgnoreCase(filter)) {
+        result = projects.findOwnedByUserIdAndStatus(actor.getId(), status, pageable);
+    } else if ("shared".equalsIgnoreCase(filter)) {
+        result = projects.findSharedWithUserIdAndStatus(actor.getId(), status, pageable);
     } else {
         result = actor.getRole() == Role.ADMIN
             ? projects.findAllByStatus(status, pageable)
@@ -45,6 +49,23 @@ public class ProjectService {
     List<Long> starredIds = projectIds.isEmpty() ? List.of() : projectStars.findStarredProjectIds(actor.getId(), projectIds);
 
     return result.map(p -> ProjectResponse.from(p, starredIds.contains(p.getId())));
+  }
+
+  public DashboardStatsResponse getStats(String email) {
+      User actor = actor(email);
+      // For simplicity, just return total projects user is part of, and dummy counts for documents and members (or count them if repositories are available).
+      // Since we don't have DocumentRepository yet, let's just count from ProjectRepository
+      long activeProjects = actor.getRole() == Role.ADMIN 
+            ? projects.countByStatus(ProjectStatus.ACTIVE) 
+            : projects.countVisibleByUserIdAndStatus(actor.getId(), ProjectStatus.ACTIVE);
+      
+      // Member count: total members in those projects.
+      long totalMembers = members.countByProjects(actor.getId(), actor.getRole() == Role.ADMIN);
+      
+      // Total docs: we don't have a document repository in this context easily accessible.
+      long totalDocuments = 0; // We'll leave it 0 or mock for now, until Document features are fully fleshed out
+
+      return new DashboardStatsResponse(activeProjects, totalDocuments, totalMembers);
   }
 
   @Transactional
