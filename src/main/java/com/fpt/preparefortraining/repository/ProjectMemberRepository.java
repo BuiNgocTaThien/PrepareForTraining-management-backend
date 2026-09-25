@@ -11,6 +11,6 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
 
   void deleteByProjectIdAndUserId(Long projectId, Long userId);
 
-  @org.springframework.data.jpa.repository.Query("SELECT COUNT(pm) FROM ProjectMember pm WHERE (:isAdmin = true AND pm.project.status = 'ACTIVE') OR (:isAdmin = false AND pm.project.status = 'ACTIVE' AND pm.project.id IN (SELECT pm2.project.id FROM ProjectMember pm2 WHERE pm2.user.id = :userId))")
+  @org.springframework.data.jpa.repository.Query("SELECT COUNT(DISTINCT pm.user) FROM ProjectMember pm WHERE (:isAdmin = true AND pm.project.status = 'ACTIVE') OR (:isAdmin = false AND pm.project.status = 'ACTIVE' AND pm.project.id IN (SELECT pm2.project.id FROM ProjectMember pm2 WHERE pm2.user.id = :userId))")
   long countByProjects(@org.springframework.data.repository.query.Param("userId") Long userId, @org.springframework.data.repository.query.Param("isAdmin") boolean isAdmin);
 }

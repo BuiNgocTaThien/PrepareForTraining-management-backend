@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -27,8 +28,12 @@ public class ProjectController {
       Authentication auth,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
-      @RequestParam(required = false) String filter) {
-    return ApiResponse.success(projects.list(auth.getName(), PageRequest.of(page, size), filter));
+      @RequestParam(required = false) String filter,
+      @RequestParam(defaultValue = "createdAt,desc") String sort,
+      @RequestParam(defaultValue = "") String search) {
+    String[] sortParams = sort.split(",");
+    Sort sortObj = Sort.by(Sort.Direction.fromString(sortParams.length > 1 ? sortParams[1] : "desc"), sortParams[0]);
+    return ApiResponse.success(projects.list(auth.getName(), PageRequest.of(page, size, sortObj), filter, search));
   }
 
   @GetMapping("/stats")

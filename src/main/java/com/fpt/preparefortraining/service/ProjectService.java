@@ -18,37 +18,45 @@ public class ProjectService {
   private final ProjectMemberRepository members;
   private final UserRepository users;
   private final ProjectStarRepository projectStars;
+  private final DocumentRepository documents;
 
   public ProjectService(
-      ProjectRepository projects, ProjectMemberRepository members, UserRepository users, ProjectStarRepository projectStars) {
+      ProjectRepository projects, ProjectMemberRepository members, UserRepository users, ProjectStarRepository projectStars, DocumentRepository documents) {
     this.projects = projects;
     this.members = members;
     this.users = users;
     this.projectStars = projectStars;
+    this.documents = documents;
   }
 
-  public Page<ProjectResponse> list(String email, Pageable pageable, String filter) {
+  public Page<ProjectResponse> list(String email, Pageable pageable, String filter, String search) {
     User actor = actor(email);
     Page<Project> result;
     
     ProjectStatus status = "archived".equalsIgnoreCase(filter) ? ProjectStatus.ARCHIVED : ProjectStatus.ACTIVE;
     
     if ("starred".equalsIgnoreCase(filter)) {
-        result = projects.findStarredByUserIdAndStatus(actor.getId(), status, pageable);
+        result = projects.findStarredByUserIdAndStatus(actor.getId(), status, search, pageable);
     } else if ("owned".equalsIgnoreCase(filter)) {
-        result = projects.findOwnedByUserIdAndStatus(actor.getId(), status, pageable);
+        result = projects.findOwnedByUserIdAndStatus(actor.getId(), status, search, pageable);
     } else if ("shared".equalsIgnoreCase(filter)) {
-        result = projects.findSharedWithUserIdAndStatus(actor.getId(), status, pageable);
+        result = projects.findSharedWithUserIdAndStatus(actor.getId(), status, search, pageable);
     } else {
         result = actor.getRole() == Role.ADMIN
-            ? projects.findAllByStatus(status, pageable)
-            : projects.findVisibleByUserIdAndStatus(actor.getId(), status, pageable);
+            ? projects.findAllByStatus(status, search, pageable)
+            : projects.findVisibleByUserIdAndStatus(actor.getId(), status, search, pageable);
     }
             
     List<Long> projectIds = result.getContent().stream().map(Project::getId).toList();
     List<Long> starredIds = projectIds.isEmpty() ? List.of() : projectStars.findStarredProjectIds(actor.getId(), projectIds);
 
-    return result.map(p -> ProjectResponse.from(p, starredIds.contains(p.getId())));
+    return result.map(p -> {
+      long imageCount = documents.countByProjectIdAndContentTypeStartingWith(p.getId(), "image/");
+      long videoCount = documents.countByProjectIdAndContentTypeStartingWith(p.getId(), "video/");
+      long audioCount = documents.countByProjectIdAndContentTypeStartingWith(p.getId(), "audio/");
+      long docCount = documents.countOtherDocumentsByProjectId(p.getId());
+      return ProjectResponse.from(p, starredIds.contains(p.getId()), imageCount, docCount, videoCount, audioCount);
+    });
   }
 
   public DashboardStatsResponse getStats(String email) {
@@ -62,8 +70,7 @@ public class ProjectService {
       // Member count: total members in those projects.
       long totalMembers = members.countByProjects(actor.getId(), actor.getRole() == Role.ADMIN);
       
-      // Total docs: we don't have a document repository in this context easily accessible.
-      long totalDocuments = 0; // We'll leave it 0 or mock for now, until Document features are fully fleshed out
+      long totalDocuments = documents.countDashboardDocuments(actor.getId(), actor.getRole() == Role.ADMIN);
 
       return new DashboardStatsResponse(activeProjects, totalDocuments, totalMembers);
   }
@@ -83,13 +90,19 @@ public class ProjectService {
     membership.setProject(project);
     membership.setUser(owner);
     members.save(membership);
-    return ProjectResponse.from(project);
+    return ProjectResponse.from(project, false, 0, 0, 0, 0);
   }
 
   public ProjectResponse detail(Long projectId, String email) {
     Project project = get(projectId);
     requireMemberOrAdmin(project, actor(email));
-    return ProjectResponse.from(project);
+    
+    long imageCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "image/");
+    long videoCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "video/");
+    long audioCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "audio/");
+    long docCount = documents.countOtherDocumentsByProjectId(projectId);
+      
+    return ProjectResponse.from(project, projectStars.existsById(new ProjectStarId(projectId, actor(email).getId())), imageCount, docCount, videoCount, audioCount);
   }
 
   @Transactional
@@ -98,7 +111,13 @@ public class ProjectService {
     requireOwnerOrAdmin(project, actor(email));
     project.setName(request.name().trim());
     project.setDescription(blankToNull(request.description()));
-    return ProjectResponse.from(projects.save(project));
+    
+    long imageCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "image/");
+    long videoCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "video/");
+    long audioCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "audio/");
+    long docCount = documents.countOtherDocumentsByProjectId(projectId);
+    
+    return ProjectResponse.from(projects.save(project), projectStars.existsById(new ProjectStarId(projectId, actor(email).getId())), imageCount, docCount, videoCount, audioCount);
   }
 
   @Transactional
@@ -106,7 +125,13 @@ public class ProjectService {
     Project project = get(projectId);
     requireOwnerOrAdmin(project, actor(email));
     project.setStatus(ProjectStatus.ARCHIVED);
-    return ProjectResponse.from(projects.save(project));
+    
+    long imageCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "image/");
+    long videoCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "video/");
+    long audioCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "audio/");
+    long docCount = documents.countOtherDocumentsByProjectId(projectId);
+    
+    return ProjectResponse.from(projects.save(project), projectStars.existsById(new ProjectStarId(projectId, actor(email).getId())), imageCount, docCount, videoCount, audioCount);
   }
 
   @Transactional
@@ -114,7 +139,13 @@ public class ProjectService {
     Project project = get(projectId);
     requireOwnerOrAdmin(project, actor(email));
     project.setStatus(ProjectStatus.ACTIVE);
-    return ProjectResponse.from(projects.save(project));
+    
+    long imageCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "image/");
+    long videoCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "video/");
+    long audioCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "audio/");
+    long docCount = documents.countOtherDocumentsByProjectId(projectId);
+    
+    return ProjectResponse.from(projects.save(project), projectStars.existsById(new ProjectStarId(projectId, actor(email).getId())), imageCount, docCount, videoCount, audioCount);
   }
 
   @Transactional
@@ -123,7 +154,13 @@ public class ProjectService {
     // User requested that any member can pin
     requireMemberOrAdmin(project, actor(email));
     project.setPinned(!project.isPinned());
-    return ProjectResponse.from(projects.save(project));
+    
+    long imageCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "image/");
+    long videoCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "video/");
+    long audioCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "audio/");
+    long docCount = documents.countOtherDocumentsByProjectId(projectId);
+    
+    return ProjectResponse.from(projects.save(project), projectStars.existsById(new ProjectStarId(projectId, actor(email).getId())), imageCount, docCount, videoCount, audioCount);
   }
 
   @Transactional
@@ -145,7 +182,12 @@ public class ProjectService {
       projectStars.save(star);
     }
     
-    return ProjectResponse.from(project, !currentlyStarred);
+    long imageCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "image/");
+    long videoCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "video/");
+    long audioCount = documents.countByProjectIdAndContentTypeStartingWith(projectId, "audio/");
+    long docCount = documents.countOtherDocumentsByProjectId(projectId);
+    
+    return ProjectResponse.from(project, !currentlyStarred, imageCount, docCount, videoCount, audioCount);
   }
 
   public List<ProjectMemberResponse> members(Long projectId, String email) {
