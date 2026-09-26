@@ -29,12 +29,15 @@ public class ProjectService {
     this.documents = documents;
   }
 
+  // --- Lấy danh sách Dự án (Có phân quyền và lọc) ---
   public Page<ProjectResponse> list(String email, Pageable pageable, String filter, String search) {
     User actor = actor(email);
     Page<Project> result;
     
+    // Nếu bộ lọc là "archived", tìm các dự án đã Lưu trữ. Ngược lại lấy các dự án đang ACTIVE
     ProjectStatus status = "archived".equalsIgnoreCase(filter) ? ProjectStatus.ARCHIVED : ProjectStatus.ACTIVE;
     
+    // Tùy theo tab hiển thị bên Frontend mà gọi hàm Query tương ứng trong Repository
     if ("starred".equalsIgnoreCase(filter)) {
         result = projects.findStarredByUserIdAndStatus(actor.getId(), status, search, pageable);
     } else if ("owned".equalsIgnoreCase(filter)) {
@@ -42,14 +45,17 @@ public class ProjectService {
     } else if ("shared".equalsIgnoreCase(filter)) {
         result = projects.findSharedWithUserIdAndStatus(actor.getId(), status, search, pageable);
     } else {
+        // Mặc định: Nếu là ADMIN thì thấy TẤT CẢ. Nếu là USER/OWNER thì chỉ thấy dự án có quyền tham gia.
         result = actor.getRole() == Role.ADMIN
             ? projects.findAllByStatus(status, search, pageable)
             : projects.findVisibleByUserIdAndStatus(actor.getId(), status, search, pageable);
     }
             
     List<Long> projectIds = result.getContent().stream().map(Project::getId).toList();
+    // Lấy ra danh sách các dự án đã được "đánh sao" (starred) của người dùng hiện tại
     List<Long> starredIds = projectIds.isEmpty() ? List.of() : projectStars.findStarredProjectIds(actor.getId(), projectIds);
 
+    // Map dữ liệu Project sang DTO trả về, đồng thời đếm số lượng tài liệu từng loại
     return result.map(p -> {
       long imageCount = documents.countByProjectIdAndContentTypeStartingWith(p.getId(), "image/");
       long videoCount = documents.countByProjectIdAndContentTypeStartingWith(p.getId(), "video/");
@@ -75,21 +81,27 @@ public class ProjectService {
       return new DashboardStatsResponse(activeProjects, totalDocuments, totalMembers);
   }
 
+  // --- Tạo một Dự án mới ---
   @Transactional
   public ProjectResponse create(CreateProjectRequest request, String email) {
-    User owner = actor(email);
+    User owner = actor(email); // Người gọi hàm này
+    // Chỉ ADMIN hoặc OWNER (cấp quản lý) mới được quyền tạo dự án. Sinh viên/Nhân viên (USER) không được tạo.
     if (owner.getRole() != Role.OWNER && owner.getRole() != Role.ADMIN)
       throw new ForbiddenException("Only Owner or Admin can create a project");
+      
     Project project = new Project();
     project.setName(request.name().trim());
     project.setDescription(blankToNull(request.description()));
     project.setOwner(owner);
     project.setStatus(ProjectStatus.ACTIVE);
     project = projects.save(project);
+    
+    // Tự động thêm chính người tạo vào danh sách thành viên (ProjectMember)
     ProjectMember membership = new ProjectMember();
     membership.setProject(project);
     membership.setUser(owner);
     members.save(membership);
+    
     return ProjectResponse.from(project, false, 0, 0, 0, 0);
   }
 
@@ -196,21 +208,30 @@ public class ProjectService {
     return members.findByProjectId(projectId).stream().map(ProjectMemberResponse::from).toList();
   }
 
+  // --- Tính năng Mời thành viên vào dự án ---
   @Transactional
   public ProjectMemberResponse addMember(
       Long projectId, AddProjectMemberRequest request, String email) {
     Project project = get(projectId);
-    requireOwnerOrAdmin(project, actor(email));
+    requireOwnerOrAdmin(project, actor(email)); // Phải là chủ dự án mới được mời người khác
+    
+    // Nếu dự án đã bị đóng băng (Archive) thì không được mời thêm
     if (project.getStatus() != ProjectStatus.ACTIVE)
       throw new BadRequestException("Cannot add members to an archived project");
+      
+    // Tìm người dùng theo email họ muốn mời
     User newMember =
         users
             .findByEmail(request.email().trim().toLowerCase())
             .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+            
     if (newMember.getStatus() != UserStatus.ACTIVE)
       throw new BadRequestException("User account is inactive");
+      
+    // Tránh việc mời trùng lặp 1 người 2 lần
     if (members.existsByProjectIdAndUserId(projectId, newMember.getId()))
       throw new BadRequestException("User is already a project member");
+      
     ProjectMember membership = new ProjectMember();
     membership.setProject(project);
     membership.setUser(newMember);

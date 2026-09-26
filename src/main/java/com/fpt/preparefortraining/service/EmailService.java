@@ -15,7 +15,10 @@ import org.thymeleaf.context.Context;
 public class EmailService {
     private final Logger log = LoggerFactory.getLogger(EmailService.class);
     
+    // mailSender: Cung cấp các hàm gửi mail cơ bản của Spring Boot
     private final JavaMailSender mailSender;
+    
+    // templateEngine: (Thymeleaf) dùng để render file HTML kết hợp với biến động
     private final TemplateEngine templateEngine;
 
     public EmailService(JavaMailSender mailSender, TemplateEngine templateEngine) {
@@ -23,36 +26,43 @@ public class EmailService {
         this.templateEngine = templateEngine;
     }
 
+    // Annotation @Async giúp hàm này chạy ngầm (background thread),
+    // nhờ đó luồng đăng ký của người dùng không bị chậm lại khi chờ gửi mail.
     @Async
     public void sendWelcomeEmail(String toEmail, String name) {
         try {
+            // Context là đối tượng chứa các biến truyền vào template HTML
             Context context = new Context();
-            context.setVariable("name", name);
+            context.setVariable("name", name); // Truyền tên người dùng vào biến ${name}
 
-            // Process the HTML template using Thymeleaf
+            // Đọc file welcome-email.html trong thư mục resources/templates và nhúng biến vào
             String htmlContent = templateEngine.process("welcome-email", context);
 
+            // MimeMessage hỗ trợ gửi mail dưới dạng HTML (thay vì plain text)
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setTo(toEmail);
-            helper.setSubject("Chào mừng đến với PrepareForTraining!");
-            helper.setText(htmlContent, true);
+            helper.setTo(toEmail); // Người nhận
+            helper.setSubject("Chào mừng đến với PrepareForTraining!"); // Tiêu đề mail
+            helper.setText(htmlContent, true); // True = Kích hoạt chế độ đọc HTML
 
-            mailSender.send(message);
+            mailSender.send(message); // Gửi mail đi
             log.info("Welcome email sent successfully to {}", toEmail);
         } catch (MessagingException e) {
+            // Nếu có lỗi (VD: cấu hình sai, mạng lỗi), in ra console
             log.error("Failed to send welcome email to {}", toEmail, e);
         }
     }
 
+    // Tương tự hàm trên, chạy ngầm để gửi mail reset password
     @Async
     public void sendPasswordResetEmail(String toEmail, String name, String resetUrl) {
         try {
             Context context = new Context();
             context.setVariable("name", name);
-            context.setVariable("resetUrl", resetUrl);
+            context.setVariable("resetUrl", resetUrl); // Đường link chứa JWT Token
 
+            // Process file reset-password-email.html
             String htmlContent = templateEngine.process("reset-password-email", context);
 
             MimeMessage message = mailSender.createMimeMessage();

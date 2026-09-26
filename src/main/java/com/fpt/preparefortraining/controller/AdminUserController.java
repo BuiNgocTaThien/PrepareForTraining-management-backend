@@ -25,9 +25,10 @@ public class AdminUserController {
   @GetMapping
   @Operation(summary = "List every user")
   public ApiResponse<Page<UserResponse>> list(
+      @RequestParam(required = false) String search,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return ApiResponse.success(users.list(PageRequest.of(page, size)));
+    return ApiResponse.success(users.list(search, PageRequest.of(page, size)));
   }
 
   @PostMapping

@@ -41,13 +41,13 @@ public class AuthController {
   @Operation(summary = "Request a password reset link")
   public ApiResponse<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
     auth.forgotPassword(request.email());
-    return ApiResponse.success("If this email is registered, a password reset link has been sent.");
+    return ApiResponse.success("Nếu email này đã được đăng ký, liên kết đặt lại mật khẩu đã được gửi.");
   }
 
   @PostMapping("/reset-password")
   @Operation(summary = "Reset password using a valid token")
   public ApiResponse<String> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
     auth.resetPassword(request.token(), request.newPassword());
-    return ApiResponse.success("Password has been successfully reset.");
+    return ApiResponse.success("Mật khẩu đã được đặt lại thành công.");
   }
 }
