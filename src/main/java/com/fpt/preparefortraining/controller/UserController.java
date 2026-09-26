@@ -20,4 +20,21 @@ public class UserController {
   public ApiResponse<UserResponse> me(Authentication authentication) {
     return ApiResponse.success(auth.currentUser(authentication.getName()));
   }
+
+  @PutMapping("/me/profile")
+  @Operation(summary = "Update profile of authenticated user")
+  public ApiResponse<UserResponse> updateProfile(
+      Authentication authentication,
+      @jakarta.validation.Valid @RequestBody com.fpt.preparefortraining.dto.request.UpdateProfileRequest request) {
+    return ApiResponse.success(auth.updateProfile(authentication.getName(), request));
+  }
+
+  @PutMapping("/me/password")
+  @Operation(summary = "Change password of authenticated user")
+  public ApiResponse<String> changePassword(
+      Authentication authentication,
+      @jakarta.validation.Valid @RequestBody com.fpt.preparefortraining.dto.request.ChangePasswordRequest request) {
+    auth.changePassword(authentication.getName(), request);
+    return ApiResponse.success("Đổi mật khẩu thành công");
+  }
 }
