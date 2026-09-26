@@ -11,3 +11,5 @@ chromadb
 # OpenAI Whisper for speech-to-text (Note: requires ffmpeg installed on OS)
 # pip install openai-whisper
 openai-whisper
+langchain-huggingface
+sentence-transformers

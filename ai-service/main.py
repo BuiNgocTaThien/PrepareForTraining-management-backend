@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 # LangChain components
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
@@ -19,13 +20,13 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_core.documents import Document
 
-load_dotenv()
+load_dotenv(override=True)
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,9 +40,12 @@ minio_client = Minio(
 )
 BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "preparefortraining-bucket")
 
-# Load Gemini LLM and Embeddings
-llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", google_api_key=os.getenv("GEMINI_API_KEY"))
-embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2", google_api_key=os.getenv("GEMINI_API_KEY"))
+# Load Gemini LLM for chat (kept for smart responses)
+llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", google_api_key=os.getenv("GEMINI_API_KEY"), max_output_tokens=8192)
+
+# Use HuggingFace Local Embeddings for zero-cost, infinite document processing
+print("Loading Local Embedding Model (HuggingFace)...")
+embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 # In-memory store for Vector DBs per project
 vector_stores = {}
@@ -93,9 +97,9 @@ def load_documents_from_minio(project_id: int):
                 loader = TextLoader(temp_file_path, encoding="utf-8")
                 docs.extend(loader.load())
             elif file_extension in ['mp4', 'mp3', 'wav']:
-                # Speech to text processing
-                text = extract_audio_and_transcribe(temp_file_path)
-                docs.append(Document(page_content=text, metadata={"source": obj.object_name, "type": "speech-to-text"}))
+                # Tạm thời bỏ qua Video/Audio vì chạy Whisper trên CPU sẽ làm treo server (mất vài tiếng)
+                print(f"Skipping media file {obj.object_name} to prevent server freeze.")
+                docs.append(Document(page_content=f"Tài liệu {obj.object_name} là file video/audio, hiện không hỗ trợ phân tích trực tiếp.", metadata={"source": obj.object_name}))
                 
     return docs
 
@@ -106,7 +110,7 @@ def build_vector_store(project_id: int):
     if not docs:
         return None
         
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=500)
     splits = text_splitter.split_documents(docs)
     
     collection_name = f"project_{project_id}"
@@ -131,7 +135,8 @@ def build_vector_store(project_id: int):
                 vectorstore.add_documents(batch)
                 break
             except Exception as e:
-                if attempt < max_retries - 1:
+                print(f"Gemini API Error: {str(e)}")
+                if "429" in str(e) and attempt < max_retries - 1:
                     print(f"Rate limit hit. Retrying in 30 seconds... (Attempt {attempt + 1})")
                     time.sleep(30)
                 else:
@@ -156,13 +161,15 @@ async def chat(req: ChatRequest):
                 return {"answer": "Dự án này chưa có tài liệu nào."}
 
         vectorstore = vector_stores[req.projectId]
-        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 20})
 
         # 2. Setup Prompt
         system_prompt = (
             "Bạn là một trợ lý ảo phân tích tài liệu của dự án. "
             "Sử dụng các thông tin sau để trả lời câu hỏi của người dùng. "
-            "Nếu thông tin không có trong tài liệu, hãy nói là không tìm thấy.\n\n"
+            "Nếu thông tin không có trong tài liệu, hãy nói là không tìm thấy. "
+            "LƯU Ý QUAN TRỌNG: Câu trả lời của bạn phải thật đầy đủ, trọn vẹn, không được ngắt quãng hoặc bỏ dở giữa chừng. "
+            "Trình bày mạch lạc bằng tiếng Việt.\n\n"
             "{context}"
         )
 
