@@ -2,7 +2,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/prepare_for_training
     username: postgres
-    password: your-password
+    password: postgres
   jpa:
     hibernate:
       ddl-auto: validate

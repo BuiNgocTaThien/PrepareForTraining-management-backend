@@ -125,4 +125,24 @@ public class DocumentService {
       throw new ForbiddenException("You are not a project member");
     }
   }
+
+  @Transactional
+  public DocumentResponse rename(Long documentId, String newName, String email) {
+    Document doc = get(documentId);
+    User actor = actor(email);
+    
+    if (actor.getRole() != Role.ADMIN 
+        && !doc.getUploader().getId().equals(actor.getId()) 
+        && !doc.getProject().getOwner().getId().equals(actor.getId())) {
+        throw new ForbiddenException("You do not have permission to rename this document");
+    }
+
+    if (newName == null || newName.trim().isEmpty()) {
+        throw new BadRequestException("New name cannot be empty");
+    }
+
+    doc.setFileName(newName.trim());
+    doc = documents.save(doc);
+    return DocumentResponse.from(doc);
+  }
 }
