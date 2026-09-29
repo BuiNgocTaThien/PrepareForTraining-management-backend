@@ -43,11 +43,11 @@ minio_client = Minio(
 BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "preparefortraining-bucket")
 
 # Load Gemini LLM for chat (kept for smart responses)
-llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", google_api_key=os.getenv("GEMINI_API_KEY"), max_output_tokens=8192)
+llm = ChatGoogleGenerativeAI(model="gemini-3.7-flash", google_api_key=os.getenv("GEMINI_API_KEY"), max_output_tokens=8192)
 
 # Use HuggingFace Local Embeddings for zero-cost, infinite document processing
 print("Loading Local Embedding Model (HuggingFace)...")
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
 
 # In-memory store for Vector DBs per project
 vector_stores = {}
@@ -99,7 +99,9 @@ def load_documents_from_minio(project_id: int):
 
             if file_extension == 'pdf':
                 loader = PyPDFLoader(temp_file_path)
-                docs.extend(loader.load())
+                loaded_docs = loader.load()
+                print(f"Loaded {len(loaded_docs)} pages from PDF: {obj.object_name}")
+                docs.extend(loaded_docs)
             elif file_extension in ['txt', 'md']:
                 loader = TextLoader(temp_file_path, encoding="utf-8")
                 docs.extend(loader.load())
@@ -136,45 +138,39 @@ def build_vector_store(project_id: int):
         persist_directory=vector_db_dir
     )
     
-    # Process in batches to avoid rate limits (100 RPM)
-    batch_size = 50
-    for i in range(0, len(splits), batch_size):
-        batch = splits[i:i + batch_size]
-        print(f"Embedding batch {i//batch_size + 1} of {(len(splits) - 1)//batch_size + 1}...")
-        
-        # Retry logic for each batch just in case it hits rate limit slightly early
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                vectorstore.add_documents(batch)
-                break
-            except Exception as e:
-                print(f"Gemini API Error: {str(e)}")
-                if "429" in str(e) and attempt < max_retries - 1:
-                    print(f"Rate limit hit. Retrying in 30 seconds... (Attempt {attempt + 1})")
-                    time.sleep(30)
-                else:
-                    raise e
-                    
-        # Sleep to respect rate limits if there are more batches
-        if i + batch_size < len(splits):
-            print("Sleeping for 60 seconds to avoid Gemini API Rate Limits...")
-            time.sleep(60)
-
+    # No rate limit for local HuggingFace embeddings
+    print("Adding documents to vector store...")
+    vectorstore.add_documents(splits)
+    print("Successfully built vector store.")
     return vectorstore
+
+def get_or_build_vector_store(project_id: int):
+    if project_id in vector_stores:
+        return vector_stores[project_id]
+        
+    collection_name = f"project_{project_id}"
+    
+    # Try loading from disk first
+    vs = Chroma(collection_name=collection_name, persist_directory=vector_db_dir, embedding_function=embeddings)
+    if vs._collection.count() > 0:
+        print(f"Loaded existing vector store from disk for project {project_id} ({vs._collection.count()} chunks)")
+        vector_stores[project_id] = vs
+        return vs
+        
+    # If not on disk, build it
+    vs = build_vector_store(project_id)
+    if vs:
+        vector_stores[project_id] = vs
+    return vs
 
 @app.post("/api/v1/chat")
 async def chat(req: ChatRequest):
     try:
-        # 1. Retrieve or build the Vector DB (RAG step 1)
-        if req.projectId not in vector_stores:
-            vs = build_vector_store(req.projectId)
-            if vs:
-                vector_stores[req.projectId] = vs
-            else:
-                return {"answer": "Dự án này chưa có tài liệu nào."}
-
-        vectorstore = vector_stores[req.projectId]
+        # 1. Retrieve or load the Vector DB from disk (RAG step 1)
+        vectorstore = get_or_build_vector_store(req.projectId)
+        if not vectorstore:
+            return {"answer": "Dự án này chưa có tài liệu nào."}
+            
         retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch_k": 15})
 
         # 2. Setup Prompt
