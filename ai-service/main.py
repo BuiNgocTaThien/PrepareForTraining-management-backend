@@ -15,10 +15,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage, AIMessage
+from typing import List, Optional
 
 load_dotenv(override=True)
 
@@ -51,9 +53,14 @@ embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 vector_stores = {}
 vector_db_dir = "./chroma_db"
 
+class Message(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
     projectId: int
     question: str
+    history: Optional[List[Message]] = []
 
 def extract_audio_and_transcribe(file_path: str):
     """
@@ -110,10 +117,17 @@ def build_vector_store(project_id: int):
     if not docs:
         return None
         
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=500)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
     splits = text_splitter.split_documents(docs)
     
     collection_name = f"project_{project_id}"
+    
+    # Try to delete existing collection to avoid duplicates when reloading
+    try:
+        temp_vs = Chroma(collection_name=collection_name, persist_directory=vector_db_dir, embedding_function=embeddings)
+        temp_vs.delete_collection()
+    except Exception:
+        pass
     
     # Initialize empty vector store
     vectorstore = Chroma(
@@ -161,20 +175,23 @@ async def chat(req: ChatRequest):
                 return {"answer": "Dự án này chưa có tài liệu nào."}
 
         vectorstore = vector_stores[req.projectId]
-        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 20})
+        retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch_k": 15})
 
         # 2. Setup Prompt
         system_prompt = (
-            "Bạn là một trợ lý ảo phân tích tài liệu của dự án. "
-            "Sử dụng các thông tin sau để trả lời câu hỏi của người dùng. "
-            "Nếu thông tin không có trong tài liệu, hãy nói là không tìm thấy. "
-            "LƯU Ý QUAN TRỌNG: Câu trả lời của bạn phải thật đầy đủ, trọn vẹn, không được ngắt quãng hoặc bỏ dở giữa chừng. "
-            "Trình bày mạch lạc bằng tiếng Việt.\n\n"
+            "Bạn là một Chuyên gia Kỹ thuật và Đào tạo (Technical & Training Lead) của dự án. "
+            "Nhiệm vụ của bạn là hỗ trợ nhân sự bằng cách trả lời câu hỏi dựa trên các tài liệu được cung cấp dưới đây.\n\n"
+            "QUY TẮC TRẢ LỜI:\n"
+            "1. CHUYÊN NGHIỆP & RÕ RÀNG: Trình bày mạch lạc, cấu trúc tốt. Luôn sử dụng Markdown (gạch đầu dòng, in đậm từ khóa, chia đoạn dễ đọc).\n"
+            "2. CHÍNH XÁC TUYỆT ĐỐI: Chỉ sử dụng thông tin trong phần Tài liệu (Context) bên dưới. Nếu thông tin không có, hãy nói rõ 'Tôi không tìm thấy thông tin này trong tài liệu hiện tại', tuyệt đối KHÔNG tự bịa đặt.\n"
+            "3. CHI TIẾT & ĐẦY ĐỦ: Câu trả lời phải trọn vẹn, giải thích cặn kẽ dựa trên tài liệu, không được ngắt quãng giữa chừng.\n\n"
+            "TÀI LIỆU DỰ ÁN (Context):\n"
             "{context}"
         )
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
         ])
 
@@ -182,10 +199,47 @@ async def chat(req: ChatRequest):
         question_answer_chain = create_stuff_documents_chain(llm, prompt)
         rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
+        # Build chat_history list
+        chat_history_messages = []
+        if req.history:
+            for msg in req.history:
+                if msg.role == "user":
+                    chat_history_messages.append(HumanMessage(content=msg.content))
+                else:
+                    chat_history_messages.append(AIMessage(content=msg.content))
+
         # 4. Generate Response
-        response = rag_chain.invoke({"input": req.question})
+        response = rag_chain.invoke({
+            "input": req.question,
+            "chat_history": chat_history_messages
+        })
         return {"answer": response["answer"]}
     
     except Exception as e:
         print("ERROR:", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+class ReloadRequest(BaseModel):
+    projectId: int
+
+@app.post("/api/v1/reload")
+async def reload_knowledge(req: ReloadRequest):
+    try:
+        print(f"Force reloading knowledge for project {req.projectId}")
+        vs = build_vector_store(req.projectId)
+        if vs:
+            vector_stores[req.projectId] = vs
+            return {"message": "Đã nạp lại kiến thức thành công."}
+        else:
+            if req.projectId in vector_stores:
+                del vector_stores[req.projectId]
+            return {"message": "Dự án này không có tài liệu nào để nạp."}
+    except Exception as e:
+        print("ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/debug")
+def debug_minio(project_id: int):
+    prefix = f"project_{project_id}/"
+    objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
+    return {"files": [obj.object_name for obj in objects]}
