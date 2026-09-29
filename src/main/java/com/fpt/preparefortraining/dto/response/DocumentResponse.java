@@ -9,7 +9,8 @@ public record DocumentResponse(
     Long fileSize,
     String contentType,
     String uploaderName,
-    LocalDateTime createdAt) {
+    LocalDateTime createdAt,
+    String storagePath) {
   
   public static DocumentResponse from(Document doc) {
     return new DocumentResponse(
@@ -18,6 +19,7 @@ public record DocumentResponse(
         doc.getFileSize(),
         doc.getContentType(),
         doc.getUploader().getFullName(),
-        doc.getCreatedAt());
+        doc.getCreatedAt(),
+        doc.getStoragePath());
   }
 }

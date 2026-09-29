@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Welcome to PrepareForTraining</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #fce4ec; /* light pink background */
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+        .header {
+            background-color: #e91e63; /* primary pink */
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 1px;
+        }
+        .content {
+            padding: 40px 30px;
+            line-height: 1.6;
+        }
+        .content h2 {
+            color: #e91e63;
+            margin-top: 0;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #e91e63;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .footer {
+            background-color: #f8bbd0;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #880e4f;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1>PrepareForTraining</h1>
+        </div>
+        <div class="content">
+            <h2>Xin chào, <span th:text="${name}">User</span>!</h2>
+            <p>Chào mừng bạn đã đến với hệ thống <strong>PrepareForTraining</strong>.</p>
+            <p>Chúng tôi rất vui khi bạn tham gia cộng đồng của chúng tôi. Hệ thống lưu trữ, chuẩn hóa và onboarding tài liệu dự án chuyên nghiệp sẽ giúp bạn quản lý dự án một cách tốt nhất.</p>
+            <p>Để bắt đầu khám phá hệ thống, vui lòng truy cập vào bảng điều khiển (Dashboard) của bạn:</p>
+            
+            <div style="text-align: center;">
+                <a href="http://localhost:5173/dashboard" class="btn" style="color: #ffffff; text-decoration: none;">Truy cập Dashboard ngay</a>
+            </div>
+            
+            <p style="margin-top: 30px; font-size: 14px; color: #666;">Nếu bạn có bất kỳ câu hỏi nào, xin đừng ngần ngại liên hệ lại với chúng tôi.</p>
+            <p style="font-weight: bold;">Trân trọng,<br>Đội ngũ PrepareForTraining</p>
+        </div>
+        <div class="footer">
+            <p>© 2026 PrepareForTraining. All rights reserved.</p>
+            <p>Hệ thống Đào tạo FPT</p>
+        </div>
+    </div>
+</body>
+</html>

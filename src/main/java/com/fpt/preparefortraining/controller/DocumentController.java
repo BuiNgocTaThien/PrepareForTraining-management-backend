@@ -70,4 +70,14 @@ public class DocumentController {
     documents.delete(documentId, auth.getName());
     return ApiResponse.success(null);
   }
+
+  @PutMapping("/{documentId}/rename")
+  @Operation(summary = "Rename a document")
+  public ApiResponse<DocumentResponse> rename(
+      @PathVariable Long projectId, 
+      @PathVariable Long documentId, 
+      @RequestBody com.fpt.preparefortraining.dto.request.RenameDocumentRequest request, 
+      Authentication auth) {
+    return ApiResponse.success(documents.rename(documentId, request.getNewName(), auth.getName()));
+  }
 }

@@ -1,36 +1,78 @@
-# Đặc tả Yêu cầu Phần mềm (Software Requirements Specification - SRS)
+# Software Requirements Specification (SRS)
+## PrepareForTraining (KBase - Knowledge Base)
 
-## 1. Tổng quan Sản phẩm
+---
 
-**PrepareForTraining Management** là một hệ thống quản lý cơ sở tri thức dự án cá nhân và đội nhóm. Người dùng sau khi xác thực có thể tạo dự án, quản lý thành viên và lưu trữ các tài liệu liên quan đến dự án (file văn bản, hình ảnh, video). 
-Phiên bản đầu tiên (MVP) tập trung vào việc quản lý siêu dữ liệu (metadata) của tài liệu và khả năng upload/download file. Tính năng Chatbot AI hỗ trợ tìm kiếm tài liệu là một tuỳ chọn sẽ được phát triển trong các giai đoạn sau.
+### 1. Introduction (Giới thiệu)
 
-## 2. Phân quyền (Roles)
+#### 1.1. Mục đích
+Tài liệu Đặc tả Yêu cầu Phần mềm (SRS) này quy định các hành vi hệ thống, giao diện tương tác và các tiêu chuẩn phi chức năng của hệ thống KBase (PrepareForTraining). Đây là bản thiết kế tham chiếu (Single source of truth) cho Developer, Tester và Quản lý dự án.
 
-| Vai trò (Role) | Quyền hạn |
-| --- | --- |
-| **ADMIN** | Quản trị viên hệ thống: Quản lý toàn bộ người dùng và tất cả các dự án trên hệ thống. |
-| **OWNER** | Chủ dự án: Tạo dự án mới, quản lý các dự án do mình sở hữu, mời hoặc xoá thành viên khỏi dự án. |
-| **USER** | Người dùng tiêu chuẩn: Xem các dự án mà họ là thành viên; tải lên (upload), xem và tải xuống (download) tài liệu trong các dự án đó. |
+#### 1.2. Phân loại mức độ ưu tiên
+- **M (Must have)**: Bắt buộc phải có trong phiên bản MVP.
+- **S (Should have)**: Quan trọng nhưng có thể trễ hạn sang bản cập nhật nhỏ.
+- **C (Could have)**: Tùy chọn (Optional).
+- **W (Won't have)**: Sẽ không làm ở Phase này.
 
-## 3. Yêu cầu Chức năng (Functional Requirements - MVP)
+---
 
-1. **Xác thực**: Khách truy cập có thể đăng ký tài khoản mới và đăng nhập bằng Email và Mật khẩu.
-2. **Bảo mật**: Hệ thống API sẽ trả về một chuỗi JWT Access Token sau khi đăng nhập thành công.
-3. **Quản lý Dự án**: OWNER có thể tạo mới, cập nhật thông tin, lưu trữ (archive/soft-delete) và xem danh sách các dự án của mình.
-4. **Quản lý Thành viên**: OWNER có quyền thêm một người dùng đã tồn tại vào dự án (thông qua email) và xoá thành viên khỏi dự án.
-5. **Quản lý Tài liệu**: Thành viên dự án có thể xem danh sách tài liệu, tải lên các định dạng file được cho phép, xem metadata và tải nguyên bản file về máy.
-6. **Hỗ trợ File**: Hệ thống hỗ trợ đa dạng định dạng file: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, MD, TXT, JPG, PNG, GIF, SVG, BMP, MP4, MOV, và AVI.
-7. **Phân quyền Dữ liệu**: Người dùng chỉ có thể truy cập vào các dự án mà họ là thành viên (ngoại trừ ADMIN có đặc quyền xem tất cả).
-8. **Tài liệu API**: Tự động sinh tài liệu Swagger/OpenAPI cho mọi endpoint đã hoàn thiện.
+### 2. Functional Requirements (Yêu cầu chức năng)
 
-## 4. Yêu cầu Phi chức năng (Non-functional Requirements)
+#### 2.1. Phân hệ Xác thực & Người dùng (Authentication)
+| ID | Yêu cầu (Requirement) | Priority |
+| --- | --- | --- |
+| `REQ-AUTH-01` | Người dùng có thể đăng ký tài khoản bằng Email và Mật khẩu. | M |
+| `REQ-AUTH-02` | Mật khẩu phải có độ dài tối thiểu 6 ký tự. | M |
+| `REQ-AUTH-03` | Người dùng có thể đăng nhập bằng API lấy JWT Token. | M |
+| `REQ-AUTH-04` | Hỗ trợ đăng nhập một chạm bằng Google (Sử dụng Google OAuth2 Token). | M |
+| `REQ-AUTH-05` | Quên mật khẩu: Gửi email chứa token đặt lại mật khẩu. | S |
+| `REQ-AUTH-06` | Đổi mật khẩu: Yêu cầu mật khẩu cũ, tự động đăng xuất sau khi đổi thành công. | M |
+| `REQ-AUTH-07` | Đổi thông tin cá nhân: Có thể đổi Họ và Tên. Không được đổi Email. | M |
 
-- **Chuẩn giao tiếp**: Tất cả các endpoint API phải bắt đầu bằng `/api/v1` và trả về định dạng JSON (ngoại trừ endpoint upload/download file).
-- **Mã hoá Mật khẩu**: Toàn bộ mật khẩu phải được mã hoá bằng thuật toán BCrypt. Không bao giờ lộ mật khẩu trong response.
-- **Validation**: Bắt lỗi dữ liệu đầu vào chặt chẽ và trả về thông báo lỗi chuẩn hoá. (Đã hỗ trợ phân trang).
-- **Lưu trữ**: Siêu dữ liệu (metadata) lưu trong PostgreSQL; File vật lý lưu tại MinIO (hoặc Local Storage khi code local).
+#### 2.2. Phân hệ Quản trị (Admin)
+| ID | Yêu cầu (Requirement) | Priority |
+| --- | --- | --- |
+| `REQ-ADM-01` | Màn hình danh sách người dùng hiển thị phân trang (pagination). | M |
+| `REQ-ADM-02` | Admin có thể tìm kiếm người dùng theo Name hoặc Email. | M |
+| `REQ-ADM-03` | Admin có thể tạo trực tiếp một User mới và gán quyền (Role). | M |
+| `REQ-ADM-04` | Admin có thể thay đổi Role (ADMIN, OWNER, USER) của một người dùng. | M |
+| `REQ-ADM-05` | Admin có thể kích hoạt (ACTIVE) hoặc khoá (INACTIVE) người dùng. | M |
 
-## 5. Các tính năng mở rộng (Out of scope for MVP)
+#### 2.3. Phân hệ Dự án (Projects)
+| ID | Yêu cầu (Requirement) | Priority |
+| --- | --- | --- |
+| `REQ-PROJ-01` | Quyền OWNER có thể tạo dự án mới (Tên, Mô tả). | M |
+| `REQ-PROJ-02` | Hệ thống phân loại dự án ở màn hình Dashboard: Tất cả, Dự án của tôi, Kho lưu trữ. | M |
+| `REQ-PROJ-03` | Có tính năng Đánh dấu sao (Pin) để dự án luôn lên đầu danh sách. | M |
+| `REQ-PROJ-04` | OWNER có thể thay đổi trạng thái dự án thành ARCHIVED (Lưu trữ). | M |
+| `REQ-PROJ-05` | Tìm kiếm dự án theo tên bằng thanh công cụ tìm kiếm. | M |
+| `REQ-PROJ-06` | OWNER có thể mời một User vào dự án thông qua Email. | M |
+| `REQ-PROJ-07` | Hủy tư cách thành viên dự án của một người dùng. | M |
 
-Các tính năng sau chưa được yêu cầu trong phiên bản MVP hiện tại: Gửi email mời tự động, trích xuất chữ từ ảnh (OCR), tìm kiếm toàn văn bản (Semantic search), Chatbot AI hỏi đáp tài liệu, và triển khai hạ tầng với Kubernetes/Terraform.
+#### 2.4. Phân hệ Tài liệu (Documents)
+| ID | Yêu cầu (Requirement) | Priority |
+| --- | --- | --- |
+| `REQ-DOC-01` | Bất kỳ thành viên nào trong dự án cũng có thể upload file. | M |
+| `REQ-DOC-02` | Hỗ trợ hiển thị % tiến độ upload ở giao diện frontend. | S |
+| `REQ-DOC-03` | Hệ thống chỉ chấp nhận định dạng: PDF, DOC(X), XLS(X), PPT(X), MD, TXT, Hình ảnh (JPG, PNG...), Video (MP4...). | M |
+| `REQ-DOC-04` | Có khả năng đổi tên tài liệu trên hệ thống. | M |
+| `REQ-DOC-05` | Tải xuống (Download) tài liệu nguyên bản. | M |
+| `REQ-DOC-06` | Xóa tài liệu (Chỉ người upload hoặc OWNER dự án mới có quyền). | M |
+
+---
+
+### 3. Non-Functional Requirements (Yêu cầu phi chức năng)
+
+#### 3.1. Performance (Hiệu suất)
+- `NFR-PERF-01`: API Load: Thời gian xử lý các truy vấn GET (không bao gồm File) phải < 200ms với băng thông mạng ổn định.
+- `NFR-PERF-02`: File Upload: Hệ thống phải xử lý trơn tru việc upload file lên tới 100MB qua S3 SDK (khuyến nghị dùng Presigned URL nếu file lớn hơn).
+
+#### 3.2. Security (Bảo mật)
+- `NFR-SEC-01`: Mật khẩu lưu trong CSDL bị băm bằng chuẩn BCrypt(strength=10).
+- `NFR-SEC-02`: Không ai, kể cả Admin, có thể đọc được mật khẩu gốc của người dùng.
+- `NFR-SEC-03`: Tấn công Cross-Site Scripting (XSS) được ngăn chặn bằng cơ chế sanitize của React.
+- `NFR-SEC-04`: Lỗ hổng Insecure Direct Object References (IDOR) được phòng ngừa bằng cách xác thực quyền truy cập project (User có thuộc ProjectID đó không) ở Backend.
+
+#### 3.3. Reliability & Maintenance (Độ tin cậy & Bảo trì)
+- `NFR-REL-01`: Code Backend phải tuân thủ chuẩn RESTful API, sử dụng HTTP Status Code chuẩn xác (200, 201 cho thành công; 400, 401, 403, 404 cho lỗi client; 500 cho lỗi server).
+- `NFR-REL-02`: Tài liệu OpenAPI 3.0 (Swagger) phải luôn được cập nhật tự động (auto-generated) và truy cập được qua link `/swagger-ui.html`.
