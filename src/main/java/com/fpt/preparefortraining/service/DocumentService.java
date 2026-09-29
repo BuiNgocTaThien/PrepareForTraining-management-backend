@@ -19,18 +19,21 @@ public class DocumentService {
   private final ProjectMemberRepository members;
   private final UserRepository users;
   private final FileStorageService storageService;
+  private final AiService aiService;
 
   public DocumentService(
       DocumentRepository documents,
       ProjectRepository projects,
       ProjectMemberRepository members,
       UserRepository users,
-      FileStorageService storageService) {
+      FileStorageService storageService,
+      AiService aiService) {
     this.documents = documents;
     this.projects = projects;
     this.members = members;
     this.users = users;
     this.storageService = storageService;
+    this.aiService = aiService;
   }
 
   // --- Lấy danh sách toàn bộ tài liệu trong một Dự án ---
@@ -86,6 +89,15 @@ public class DocumentService {
     doc.setStoragePath(objectName); // Lưu đường dẫn ảo trên S3 để sau này download
     doc = documents.save(doc);
 
+    // Báo cho AI Service nạp lại kiến thức (chạy ngầm để không block request)
+    new Thread(() -> {
+      try {
+        aiService.reloadKnowledge(projectId);
+      } catch (Exception e) {
+        System.err.println("Failed to reload AI knowledge: " + e.getMessage());
+      }
+    }).start();
+
     return DocumentResponse.from(doc);
   }
 
@@ -120,6 +132,15 @@ public class DocumentService {
     storageService.deleteFile(doc.getStoragePath());
     // Xóa bản ghi trong Database
     documents.delete(doc);
+
+    // Báo cho AI Service nạp lại kiến thức (chạy ngầm để không block request)
+    new Thread(() -> {
+      try {
+        aiService.reloadKnowledge(doc.getProject().getId());
+      } catch (Exception e) {
+        System.err.println("Failed to reload AI knowledge: " + e.getMessage());
+      }
+    }).start();
   }
 
   // --- Các hàm Validate dùng chung ---
