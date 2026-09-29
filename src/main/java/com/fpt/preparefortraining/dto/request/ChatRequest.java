@@ -18,4 +18,6 @@ public class ChatRequest {
     private String question;
 
     private List<ChatMessage> history;
+    
+    private List<String> documentSource;
 }
