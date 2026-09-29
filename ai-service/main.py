@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # LangChain components
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -77,71 +77,110 @@ def extract_audio_and_transcribe(file_path: str):
         print("Speech-to-text Error (requires openai-whisper and ffmpeg):", e)
         return "Bản ghi âm không thể đọc do thiếu thư viện hệ thống (ffmpeg)."
 
-def load_documents_from_minio(project_id: int):
-    prefix = f"project_{project_id}/"
-    objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
-    
+def load_documents_from_minio(project_id: int, specific_objects=None):
+    if specific_objects is None:
+        prefix = f"project_{project_id}/"
+        objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
+        object_names = [obj.object_name for obj in objects if not obj.object_name.endswith('/')]
+    else:
+        object_names = specific_objects
+        
     docs = []
     # Temporary directory to save files for loaders and whisper
     with tempfile.TemporaryDirectory() as temp_dir:
-        for obj in objects:
-            if obj.object_name.endswith('/'): continue
-            
-            file_extension = obj.object_name.split('.')[-1].lower()
-            response = minio_client.get_object(BUCKET_NAME, obj.object_name)
-            content = response.read()
-            response.close()
-            response.release_conn()
+        for obj_name in object_names:
+            file_extension = obj_name.split('.')[-1].lower()
+            try:
+                response = minio_client.get_object(BUCKET_NAME, obj_name)
+                content = response.read()
+                response.close()
+                response.release_conn()
+            except Exception as e:
+                print(f"Error reading {obj_name}: {e}")
+                continue
 
-            temp_file_path = os.path.join(temp_dir, os.path.basename(obj.object_name))
+            temp_file_path = os.path.join(temp_dir, os.path.basename(obj_name))
             with open(temp_file_path, "wb") as f:
                 f.write(content)
 
-            if file_extension == 'pdf':
-                loader = PyPDFLoader(temp_file_path)
-                loaded_docs = loader.load()
-                print(f"Loaded {len(loaded_docs)} pages from PDF: {obj.object_name}")
-                docs.extend(loaded_docs)
-            elif file_extension in ['txt', 'md']:
-                loader = TextLoader(temp_file_path, encoding="utf-8")
-                docs.extend(loader.load())
-            elif file_extension in ['mp4', 'mp3', 'wav']:
-                # Tạm thời bỏ qua Video/Audio vì chạy Whisper trên CPU sẽ làm treo server (mất vài tiếng)
-                print(f"Skipping media file {obj.object_name} to prevent server freeze.")
-                docs.append(Document(page_content=f"Tài liệu {obj.object_name} là file video/audio, hiện không hỗ trợ phân tích trực tiếp.", metadata={"source": obj.object_name}))
+            try:
+                if file_extension == 'pdf':
+                    loader = PyPDFLoader(temp_file_path)
+                    loaded_docs = loader.load()
+                    for doc in loaded_docs:
+                        doc.metadata["source"] = obj_name
+                    print(f"Loaded {len(loaded_docs)} pages from PDF: {obj_name}")
+                    docs.extend(loaded_docs)
+                elif file_extension in ['txt', 'md']:
+                    loader = TextLoader(temp_file_path, encoding="utf-8")
+                    loaded_docs = loader.load()
+                    for doc in loaded_docs:
+                        doc.metadata["source"] = obj_name
+                    docs.extend(loaded_docs)
+                elif file_extension == 'docx':
+                    loader = Docx2txtLoader(temp_file_path)
+                    loaded_docs = loader.load()
+                    for doc in loaded_docs:
+                        doc.metadata["source"] = obj_name
+                    print(f"Loaded DOCX: {obj_name}")
+                    docs.extend(loaded_docs)
+                elif file_extension in ['mp4', 'mp3', 'wav']:
+                    # Tạm thời bỏ qua Video/Audio
+                    print(f"Skipping media file {obj_name} to prevent server freeze.")
+                    docs.append(Document(page_content=f"Tài liệu {obj_name} là file video/audio, hiện không hỗ trợ phân tích trực tiếp.", metadata={"source": obj_name}))
+            except Exception as e:
+                print(f"Error parsing {obj_name}: {e}")
                 
     return docs
 
 def build_vector_store(project_id: int):
-    print(f"Analyzing data for project {project_id}...")
-    docs = load_documents_from_minio(project_id)
-    
-    if not docs:
-        return None
-        
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
-    splits = text_splitter.split_documents(docs)
-    
+    print(f"Syncing data for project {project_id} (Delta Update)...")
     collection_name = f"project_{project_id}"
-    
-    # Try to delete existing collection to avoid duplicates when reloading
-    try:
-        temp_vs = Chroma(collection_name=collection_name, persist_directory=vector_db_dir, embedding_function=embeddings)
-        temp_vs.delete_collection()
-    except Exception:
-        pass
-    
-    # Initialize empty vector store
     vectorstore = Chroma(
         collection_name=collection_name,
         embedding_function=embeddings,
         persist_directory=vector_db_dir
     )
     
-    # No rate limit for local HuggingFace embeddings
-    print("Adding documents to vector store...")
-    vectorstore.add_documents(splits)
-    print("Successfully built vector store.")
+    # Get existing sources from Chroma
+    existing_data = vectorstore.get()
+    existing_ids = existing_data['ids']
+    existing_metadatas = existing_data['metadatas']
+    
+    existing_sources = set()
+    for meta in existing_metadatas:
+        if meta and 'source' in meta:
+            existing_sources.add(meta['source'])
+            
+    # Get current files in MinIO
+    prefix = f"project_{project_id}/"
+    minio_objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
+    minio_sources = set([obj.object_name for obj in minio_objects if not obj.object_name.endswith('/')])
+    
+    # 1. Delete removed files from Chroma
+    sources_to_delete = existing_sources - minio_sources
+    if sources_to_delete:
+        print(f"Removing deleted files from Chroma: {sources_to_delete}")
+        ids_to_delete = []
+        for doc_id, meta in zip(existing_ids, existing_metadatas):
+            if meta and meta.get('source') in sources_to_delete:
+                ids_to_delete.append(doc_id)
+        if ids_to_delete:
+            vectorstore.delete(ids=ids_to_delete)
+            
+    # 2. Add new files to Chroma
+    sources_to_add = minio_sources - existing_sources
+    if sources_to_add:
+        print(f"Adding new files to Chroma: {sources_to_add}")
+        new_docs = load_documents_from_minio(project_id, specific_objects=list(sources_to_add))
+        if new_docs:
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+            splits = text_splitter.split_documents(new_docs)
+            vectorstore.add_documents(splits)
+            print(f"Successfully added {len(splits)} chunks from new documents.")
+    else:
+        print("No new documents to add.")
+        
     return vectorstore
 
 def get_or_build_vector_store(project_id: int):
