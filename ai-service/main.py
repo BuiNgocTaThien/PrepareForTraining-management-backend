@@ -234,10 +234,11 @@ async def chat(req: ChatRequest):
         question_answer_chain = create_stuff_documents_chain(llm, prompt)
         rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
-        # Build chat_history list
+        # Build chat_history list (Sliding Window: only keep the last 10 messages)
         chat_history_messages = []
         if req.history:
-            for msg in req.history:
+            recent_history = req.history[-10:] # Prevent memory overflow (429 Quota Exceeded)
+            for msg in recent_history:
                 if msg.role == "user":
                     chat_history_messages.append(HumanMessage(content=msg.content))
                 else:
