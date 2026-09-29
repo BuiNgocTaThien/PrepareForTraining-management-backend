@@ -209,7 +209,27 @@ async def chat(req: ChatRequest):
             "input": req.question,
             "chat_history": chat_history_messages
         })
-        return {"answer": response["answer"]}
+        
+        answer = response["answer"]
+        
+        # 5. Extract Citations
+        sources = set()
+        for doc in response.get("context", []):
+            if "source" in doc.metadata:
+                source_path = doc.metadata["source"]
+                filename = os.path.basename(source_path)
+                page = doc.metadata.get("page", "")
+                if page:
+                    sources.add(f"{filename} (trang {page + 1})") # PyPDF page is 0-indexed
+                else:
+                    sources.add(filename)
+                    
+        if sources:
+            answer += "\n\n---\n**📚 Nguồn tham khảo:**\n"
+            for src in sources:
+                answer += f"- {src}\n"
+                
+        return {"answer": answer}
     
     except Exception as e:
         print("ERROR:", e)
